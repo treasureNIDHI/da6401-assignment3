@@ -352,6 +352,9 @@ class Transformer(nn.Module):
                 gdown.download(id=DRIVE_ID, output=_ckpt, quiet=False)
             ckpt = torch.load(_ckpt, map_location='cpu')
             self.load_state_dict(ckpt['model_state_dict'])
+            # Restore vocab dicts if they were saved in the checkpoint
+            if 'src_vocab_stoi' in ckpt:
+                self._restore_vocab_from_ckpt(ckpt)
 
     def _init_weights(self) -> None:
         for p in self.parameters():
@@ -363,6 +366,18 @@ class Transformer(nn.Module):
         self.src_vocab = src_vocab
         self.tgt_vocab = tgt_vocab
         self.spacy_de  = spacy_de
+
+    def _restore_vocab_from_ckpt(self, ckpt: dict) -> None:
+        """Reconstruct lightweight vocab objects from saved stoi/itos dicts."""
+        class _Vocab:
+            def __init__(self, stoi, itos):
+                self.stoi = stoi
+                self.itos = itos
+            def lookup_token(self, idx):
+                return self.itos[idx]
+        sv = _Vocab(ckpt['src_vocab_stoi'], ckpt['src_vocab_itos'])
+        tv = _Vocab(ckpt['tgt_vocab_stoi'], ckpt['tgt_vocab_itos'])
+        self.set_vocabs(sv, tv, spacy_de=None)  # spacy loaded on demand in infer()
 
     # ── AUTOGRADER HOOKS ───────────────────────────────────────────────
 
@@ -424,19 +439,30 @@ class Transformer(nn.Module):
         set_vocabs() has not been called explicitly.
         """
         if self.src_vocab is None or self.tgt_vocab is None:
-            from dataset import build_datasets
-            _, _, _, src_vocab, tgt_vocab, spacy_de = build_datasets(
-                batch_size=1, min_freq=2
-            )
-            self.set_vocabs(src_vocab, tgt_vocab, spacy_de)
+            # Vocab not yet loaded — try dataset builder, else raise clearly
+            try:
+                from dataset import build_datasets
+                _, _, _, sv, tv, sp = build_datasets(batch_size=1, min_freq=2)
+                self.set_vocabs(sv, tv, sp)
+            except Exception as e:
+                raise RuntimeError(
+                    f"Vocab unavailable and could not be rebuilt: {e}. "
+                    "Ensure checkpoint was saved with vocab dicts."
+                ) from e
 
         device = next(self.parameters()).device
 
-        # Tokenise source sentence
+        # Tokenise source sentence — use spaCy if available, else whitespace
         if self.spacy_de is not None:
             tokens = [tok.text.lower() for tok in self.spacy_de(src_sentence)]
         else:
-            tokens = src_sentence.lower().split()
+            # Lazy-load spaCy; fall back to whitespace if model not installed
+            try:
+                import spacy as _spacy
+                self.spacy_de = _spacy.load('de_core_news_sm')
+                tokens = [tok.text.lower() for tok in self.spacy_de(src_sentence)]
+            except OSError:
+                tokens = src_sentence.lower().split()
 
         unk_idx = self.src_vocab.stoi.get('<unk>', 0)
         sos_idx = self.src_vocab.stoi['<sos>']
