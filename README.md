@@ -4,8 +4,7 @@ Implementation of the Transformer architecture from "Attention Is All You Need" 
 for German→English Neural Machine Translation on the Multi30k dataset.
 
 > **Code Repository:** https://github.com/treasureNIDHI/da6401-assignment3
-> **GitHub Skeleton:** https://github.com/MiRL-IITM/da6401_assignment_3  
-> **W&B Report (Public):** https://wandb.ai/nidhi-jagatpura-iit-madras/da6401-a3/reports/DA6401-Assignment-3-—-Transformer-for-Machine-Translation--VmlldzoxNjg1MzEwMQ==
+> **W&B Report (Public):** https://wandb.ai/nidhi-jagatpura-iit-madras/da6401-a3/reports/DA6401-Assignment-3-Transformer-for-Machine-Translation--VmlldzoxNjg1MzEwMQ?accessToken=rsaur0o8sri0o9dq3wabne8z3v9xsbjshyix95xxwzj9kwr0h36y1ntff0a7oubc
 
 ---
 
