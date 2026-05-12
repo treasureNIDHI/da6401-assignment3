@@ -309,14 +309,14 @@ class Transformer(nn.Module):
 
     def __init__(
         self,
-        src_vocab_size: int,
-        tgt_vocab_size: int,
-        d_model:   int   = 512,
-        N:         int   = 6,
-        num_heads: int   = 8,
-        d_ff:      int   = 2048,
-        dropout:   float = 0.1,
-        checkpoint_path: str = None,
+        src_vocab_size: int   = 7853,   # Multi30k DE vocab (min_freq=2)
+        tgt_vocab_size: int   = 5893,   # Multi30k EN vocab (min_freq=2)
+        d_model:        int   = 256,
+        N:              int   = 3,
+        num_heads:      int   = 8,
+        d_ff:           int   = 512,
+        dropout:        float = 0.1,
+        checkpoint_path: str  = None,
     ) -> None:
         super().__init__()
         self.d_model = d_model
@@ -335,18 +335,22 @@ class Transformer(nn.Module):
         # Final linear projection to vocabulary
         self.projection = nn.Linear(d_model, tgt_vocab_size)
 
-        # Vocabulary references for Transformer.infer (set via set_vocabs)
+        # Vocabulary references for Transformer.infer (set via set_vocabs or auto-built)
         self.src_vocab = None
         self.tgt_vocab = None
         self.spacy_de  = None
 
         self._init_weights()
 
-        if checkpoint_path is not None:
-            if not os.path.exists(checkpoint_path):
+        # Resolve checkpoint path: explicit arg → local best_checkpoint.pt → download
+        _ckpt = checkpoint_path
+        if _ckpt is None and os.path.exists("best_checkpoint.pt"):
+            _ckpt = "best_checkpoint.pt"
+        if _ckpt is not None:
+            if not os.path.exists(_ckpt):
                 DRIVE_ID = "1Ag7AfbEfcWUdaU6xa36sHi8v8T8vzXUb"
-                gdown.download(id=DRIVE_ID, output=checkpoint_path, quiet=False)
-            ckpt = torch.load(checkpoint_path, map_location='cpu')
+                gdown.download(id=DRIVE_ID, output=_ckpt, quiet=False)
+            ckpt = torch.load(_ckpt, map_location='cpu')
             self.load_state_dict(ckpt['model_state_dict'])
 
     def _init_weights(self) -> None:
@@ -416,10 +420,15 @@ class Transformer(nn.Module):
         """
         Translate a raw German sentence to English using greedy decoding.
 
-        Requires set_vocabs() to have been called first.
+        Vocabulary is built automatically from Multi30k on first call if
+        set_vocabs() has not been called explicitly.
         """
-        assert self.src_vocab is not None and self.tgt_vocab is not None, \
-            "Call model.set_vocabs(src_vocab, tgt_vocab, spacy_de) before infer()."
+        if self.src_vocab is None or self.tgt_vocab is None:
+            from dataset import build_datasets
+            _, _, _, src_vocab, tgt_vocab, spacy_de = build_datasets(
+                batch_size=1, min_freq=2
+            )
+            self.set_vocabs(src_vocab, tgt_vocab, spacy_de)
 
         device = next(self.parameters()).device
 
