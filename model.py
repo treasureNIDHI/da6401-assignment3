@@ -367,17 +367,38 @@ class Transformer(nn.Module):
         self.tgt_vocab = tgt_vocab
         self.spacy_de  = spacy_de
 
-    def _restore_vocab_from_ckpt(self, ckpt: dict) -> None:
-        """Reconstruct lightweight vocab objects from saved stoi/itos dicts."""
+    def _restore_vocab_from_ckpt(self, data: dict) -> None:
+        """Reconstruct lightweight vocab objects from a stoi/itos dict."""
         class _Vocab:
             def __init__(self, stoi, itos):
                 self.stoi = stoi
                 self.itos = itos
             def lookup_token(self, idx):
                 return self.itos[idx]
-        sv = _Vocab(ckpt['src_vocab_stoi'], ckpt['src_vocab_itos'])
-        tv = _Vocab(ckpt['tgt_vocab_stoi'], ckpt['tgt_vocab_itos'])
-        self.set_vocabs(sv, tv, spacy_de=None)  # spacy loaded on demand in infer()
+        sv = _Vocab(data['src_vocab_stoi'], data['src_vocab_itos'])
+        tv = _Vocab(data['tgt_vocab_stoi'], data['tgt_vocab_itos'])
+        self.set_vocabs(sv, tv, spacy_de=None)
+
+    def _try_load_vocab(self) -> bool:
+        """
+        Try to load vocab from vocab.pt (shipped in submission zip) or from
+        the checkpoint. Returns True if vocab was successfully loaded.
+        """
+        # 1. vocab.pt alongside the code (most reliable — no Drive/spaCy needed)
+        for candidate in ['vocab.pt', os.path.join(os.path.dirname(__file__), 'vocab.pt')]:
+            if os.path.exists(candidate):
+                data = torch.load(candidate, map_location='cpu')
+                self._restore_vocab_from_ckpt(data)
+                return True
+        # 2. vocab embedded in checkpoint
+        for ckpt_path in ['best_checkpoint.pt',
+                          os.path.join(os.path.dirname(__file__), 'best_checkpoint.pt')]:
+            if os.path.exists(ckpt_path):
+                data = torch.load(ckpt_path, map_location='cpu')
+                if 'src_vocab_stoi' in data:
+                    self._restore_vocab_from_ckpt(data)
+                    return True
+        return False
 
     # ── AUTOGRADER HOOKS ───────────────────────────────────────────────
 
@@ -439,30 +460,20 @@ class Transformer(nn.Module):
         set_vocabs() has not been called explicitly.
         """
         if self.src_vocab is None or self.tgt_vocab is None:
-            # Vocab not yet loaded — try dataset builder, else raise clearly
-            try:
-                from dataset import build_datasets
-                _, _, _, sv, tv, sp = build_datasets(batch_size=1, min_freq=2)
-                self.set_vocabs(sv, tv, sp)
-            except Exception as e:
-                raise RuntimeError(
-                    f"Vocab unavailable and could not be rebuilt: {e}. "
-                    "Ensure checkpoint was saved with vocab dicts."
-                ) from e
+            # Auto-build vocab — dataset.py will download spaCy models if missing
+            from dataset import build_datasets
+            _, _, _, src_vocab, tgt_vocab, spacy_de = build_datasets(
+                batch_size=1, min_freq=2
+            )
+            self.set_vocabs(src_vocab, tgt_vocab, spacy_de)
 
         device = next(self.parameters()).device
 
-        # Tokenise source sentence — use spaCy if available, else whitespace
+        # Tokenise source sentence
         if self.spacy_de is not None:
             tokens = [tok.text.lower() for tok in self.spacy_de(src_sentence)]
         else:
-            # Lazy-load spaCy; fall back to whitespace if model not installed
-            try:
-                import spacy as _spacy
-                self.spacy_de = _spacy.load('de_core_news_sm')
-                tokens = [tok.text.lower() for tok in self.spacy_de(src_sentence)]
-            except OSError:
-                tokens = src_sentence.lower().split()
+            tokens = src_sentence.lower().split()
 
         unk_idx = self.src_vocab.stoi.get('<unk>', 0)
         sos_idx = self.src_vocab.stoi['<sos>']
