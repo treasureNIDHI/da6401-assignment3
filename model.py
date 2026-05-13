@@ -450,11 +450,16 @@ class Transformer(nn.Module):
         memory = self.encode(src, src_mask)
         return self.decode(memory, src_mask, tgt, tgt_mask)
 
-    def infer(self, src_sentence: str) -> str:
+    def infer(self, src_sentence: str, beam_size: int = 5, max_len: int = 100) -> str:
         """
-        Translate a raw German sentence to English using greedy decoding.
+        Translate a raw German sentence to English using beam search decoding.
 
-        Vocabulary is built automatically from Multi30k on first call if
+        Args:
+            src_sentence : Raw German string.
+            beam_size    : Number of beams (default 5). Higher = better BLEU, slower.
+            max_len      : Maximum output tokens to generate.
+
+        Vocabulary is loaded automatically from vocab.pt on first call if
         set_vocabs() has not been called explicitly.
         """
         if self.src_vocab is None or self.tgt_vocab is None:
@@ -465,7 +470,7 @@ class Transformer(nn.Module):
 
         device = next(self.parameters()).device
 
-        # Tokenise — use spaCy if available, else whitespace
+        # Tokenise — use spaCy if available, else whitespace split
         if self.spacy_de is not None:
             tokens = [tok.text.lower() for tok in self.spacy_de(src_sentence)]
         else:
@@ -491,17 +496,59 @@ class Transformer(nn.Module):
         self.eval()
         with torch.no_grad():
             memory = self.encode(src, src_mask)
-            ys = torch.tensor([[tgt_sos]], dtype=torch.long, device=device)
-            for _ in range(100):
-                tgt_mask = make_tgt_mask(ys, pad_idx=tgt_pad)
-                logits   = self.decode(memory, src_mask, ys, tgt_mask)
-                next_tok = logits[:, -1, :].argmax(dim=-1, keepdim=True)
-                ys = torch.cat([ys, next_tok], dim=1)
-                if next_tok.item() == tgt_eos:
+
+            # ── Beam search ────────────────────────────────────────────
+            # Each beam: (cumulative_log_prob, token_id_list)
+            beams: list = [(0.0, [tgt_sos])]
+            completed: list = []
+
+            for _ in range(max_len):
+                all_candidates: list = []
+
+                for cum_lp, seq in beams:
+                    if seq[-1] == tgt_eos:
+                        completed.append((cum_lp, seq))
+                        continue
+
+                    ys = torch.tensor([seq], dtype=torch.long, device=device)
+                    tgt_mask = make_tgt_mask(ys, pad_idx=tgt_pad)
+                    logits   = self.decode(memory, src_mask, ys, tgt_mask)
+                    # Log-probs over vocab for the last position
+                    log_probs = F.log_softmax(logits[0, -1, :], dim=-1)
+                    top_lp, top_idx = log_probs.topk(beam_size)
+
+                    for lp, idx in zip(top_lp.tolist(), top_idx.tolist()):
+                        all_candidates.append((cum_lp + lp, seq + [idx]))
+
+                if not all_candidates:
                     break
 
+                # Rank by length-normalised score to avoid bias toward short seqs
+                all_candidates.sort(
+                    key=lambda x: x[0] / max(len(x[1]) - 1, 1),
+                    reverse=True,
+                )
+                beams = all_candidates[:beam_size]
+
+                # Stop early if every active beam has emitted <eos>
+                if all(s[-1] == tgt_eos for _, s in beams):
+                    completed.extend(beams)
+                    beams = []
+                    break
+
+            completed.extend(beams)
+            if not completed:
+                completed = [(0.0, [tgt_sos, tgt_eos])]
+
+            # Pick the hypothesis with the best length-normalised score
+            completed.sort(
+                key=lambda x: x[0] / max(len(x[1]) - 1, 1),
+                reverse=True,
+            )
+            best_seq = completed[0][1]
+
         out_tokens = []
-        for idx in ys[0].tolist():
+        for idx in best_seq:
             if idx == tgt_eos:
                 break
             if idx not in (tgt_sos, tgt_pad):
