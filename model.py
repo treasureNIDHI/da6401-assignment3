@@ -460,16 +460,14 @@ class Transformer(nn.Module):
         set_vocabs() has not been called explicitly.
         """
         if self.src_vocab is None or self.tgt_vocab is None:
-            # Auto-build vocab — dataset.py will download spaCy models if missing
-            from dataset import build_datasets
-            _, _, _, src_vocab, tgt_vocab, spacy_de = build_datasets(
-                batch_size=1, min_freq=2
-            )
-            self.set_vocabs(src_vocab, tgt_vocab, spacy_de)
+            if not self._try_load_vocab():
+                raise RuntimeError(
+                    "vocab.pt not found and checkpoint does not contain vocab dicts."
+                )
 
         device = next(self.parameters()).device
 
-        # Tokenise source sentence
+        # Tokenise — use spaCy if available, else whitespace
         if self.spacy_de is not None:
             tokens = [tok.text.lower() for tok in self.spacy_de(src_sentence)]
         else:

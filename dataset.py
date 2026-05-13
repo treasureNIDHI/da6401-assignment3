@@ -78,25 +78,19 @@ class Multi30kDataset(Dataset):
     ) -> None:
         self.split = split
 
-        # Load spacy models (German → English), auto-download if missing
+        # Load spacy models (German → English)
         try:
             self.spacy_de = spacy.load('de_core_news_sm')
         except OSError:
-            import subprocess, sys
-            subprocess.run(
-                [sys.executable, "-m", "spacy", "download", "de_core_news_sm"],
-                check=True
+            raise RuntimeError(
+                "Run: python -m spacy download de_core_news_sm"
             )
-            self.spacy_de = spacy.load('de_core_news_sm')
         try:
             self.spacy_en = spacy.load('en_core_web_sm')
         except OSError:
-            import subprocess, sys
-            subprocess.run(
-                [sys.executable, "-m", "spacy", "download", "en_core_web_sm"],
-                check=True
+            raise RuntimeError(
+                "Run: python -m spacy download en_core_web_sm"
             )
-            self.spacy_en = spacy.load('en_core_web_sm')
 
         # Load raw dataset
         raw = load_dataset('bentrevett/multi30k', split=split)
