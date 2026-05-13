@@ -342,14 +342,12 @@ class Transformer(nn.Module):
 
         self._init_weights()
 
-        # Resolve checkpoint path: explicit arg → local best_checkpoint.pt → download
-        _ckpt = checkpoint_path
-        if _ckpt is None and os.path.exists("best_checkpoint.pt"):
-            _ckpt = "best_checkpoint.pt"
-        if _ckpt is not None:
-            if not os.path.exists(_ckpt):
-                DRIVE_ID = "1Ag7AfbEfcWUdaU6xa36sHi8v8T8vzXUb"
-                gdown.download(id=DRIVE_ID, output=_ckpt, quiet=False)
+        # Resolve checkpoint path: explicit arg → best_checkpoint.pt (download if needed)
+        _ckpt = checkpoint_path if checkpoint_path is not None else "best_checkpoint.pt"
+        if not os.path.exists(_ckpt):
+            DRIVE_ID = "1Ag7AfbEfcWUdaU6xa36sHi8v8T8vzXUb"
+            gdown.download(id=DRIVE_ID, output=_ckpt, quiet=False)
+        if os.path.exists(_ckpt):
             ckpt = torch.load(_ckpt, map_location='cpu')
             self.load_state_dict(ckpt['model_state_dict'])
             # Restore vocab dicts if they were saved in the checkpoint
