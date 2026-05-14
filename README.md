@@ -78,26 +78,6 @@ The sinusoidal PE is registered as a `torch.Tensor` buffer (not an `nn.Parameter
 
 ---
 
-## Autograder API
-
-All contracted signatures are preserved exactly:
-
-```python
-# model.py
-scaled_dot_product_attention(Q, K, V, mask=None) -> (output, attn_weights)
-make_src_mask(src, pad_idx=1)                    -> BoolTensor [batch, 1, 1, src_len]
-make_tgt_mask(tgt, pad_idx=1)                    -> BoolTensor [batch, 1, tgt_len, tgt_len]
-Transformer.encode(src, src_mask)                -> Tensor
-Transformer.decode(memory, src_mask, tgt, tgt_mask) -> Tensor
-Transformer.infer(src_sentence: str)             -> str
-
-# train.py
-greedy_decode(model, src, src_mask, max_len, start_symbol, end_symbol, device) -> Tensor [1, out_len]
-evaluate_bleu(model, test_dataloader, tgt_vocab, device, max_len)              -> float (0–100)
-save_checkpoint(model, optimizer, scheduler, epoch, path)                      -> None
-load_checkpoint(path, model, optimizer, scheduler)                             -> int
-```
-
 ### Loading the best checkpoint
 
 The best checkpoint (epoch 14, val loss 2.624) is hosted on Google Drive and downloaded automatically:
@@ -142,8 +122,6 @@ model = Transformer(
 | 2.3 | Attention head specialisation | 8 heads show distinct local, long-range, positional, and boundary roles; head redundancy observed |
 | 2.4 | Sinusoidal vs Learned PE | Sinusoidal: 38.1 BLEU vs Learned: 37.5 — sinusoidal converges faster and generalises to longer sequences |
 | 2.5 | Label smoothing | ε=0.0 confidence 0.636 vs ε=0.1 confidence 0.579 — smoothing regularises over-confidence |
-
-Full analysis and interactive plots: https://wandb.ai/nidhi-jagatpura-iit-madras/da6401-a3/reports/DA6401-Assignment-3-—-Transformer-for-Machine-Translation--VmlldzoxNjg1MzEwMQ==
 
 ---
 

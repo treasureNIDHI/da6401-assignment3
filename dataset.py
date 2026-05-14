@@ -1,6 +1,5 @@
 """
 dataset.py — Multi30k Dataset, Vocabulary, and DataLoader
-DA6401 Assignment 3
 """
 
 from collections import Counter

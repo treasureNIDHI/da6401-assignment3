@@ -1,8 +1,10 @@
 """
-lr_scheduler.py — Noam Learning Rate Scheduler
-DA6401 Assignment 3
+Noam Learning Rate Scheduler
+Reference: "Attention Is All You Need" (Vaswani et al., 2017)
+           https://arxiv.org/abs/1706.03762
 
-Formula (Vaswani et al., 2017):
+
+Formula:
     lrate = d_model^(-0.5) * min(step^(-0.5), step * warmup_steps^(-1.5))
 """
 
